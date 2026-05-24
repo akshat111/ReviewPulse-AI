@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@media print {
+  body {
+    background: white !important;
+    color: #111827 !important;
+  }
+  .no-print, header, footer, form, button, select, .settings-card, .stepper-card, .tabs-container {
+    display: none !important;
+  }
+  main {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .bg-slate-800, .bg-slate-900, .bg-slate-950, .bg-gradient-to-br, .bg-gradient-to-r {
+    background: #f9fafb !important;
+    color: #111827 !important;
+    border-color: #e5e7eb !important;
+    box-shadow: none !important;
+  }
+  .text-white, .text-slate-200, .text-slate-300, .text-slate-450, .text-slate-400, .text-slate-500 {
+    color: #111827 !important;
+  }
+  .text-emerald-400, .text-cyan-400, .text-teal-400, .text-emerald-300 {
+    color: #047857 !important; /* dark green for print readability */
+  }
+  .border-slate-700, .border-slate-800, .border-slate-600 {
+    border-color: #d1d5db !important;
+  }
+  blockquote {
+    border-left-color: #9ca3af !important;
+    color: #374151 !important;
+  }
+  /* Avoid page breaks inside cards */
+  section, .card, .grid > div {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

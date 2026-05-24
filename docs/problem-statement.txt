@@ -1,0 +1,87 @@
+Problem Statement: Weekly Review Pulse Agent
+Session: Building an Autonomous AI Agent with Long-Term Memory using Mem0
+
+What we're building
+A small autonomous AI agent that produces a one-page "weekly review pulse" for Groww —
+top themes, real user quotes, and action ideas pulled from public App Store reviews.
+The thing that makes it interesting: the agent has long-term memory via Mem0. So when you
+re-run it next week with fresh reviews, it doesn't start from zero — it remembers last week's
+themes and tells you which ones persist, which are new, and which have faded.
+That contrast across weeks is the whole point of the class. It's how you'll feel the difference
+between an LLM call and an actual agent.
+
+What the class agent does
+1. Takes a week label (e.g. 2026-W20) from the CLI.
+2. Recalls anything it remembers about prior weeks for Groww (via Mem0).
+3. Fetches fresh reviews live from the Apple App Store's public RSS feed for the Groww
+   app. (Real scraping — we do it together in class.)
+4. Analyzes the reviews with the LLM in-context to extract 3 themes, a representative
+   quote per theme, and one action idea per theme.
+5. Compares the new themes against what it remembered — flags persisting themes, new
+   themes, and dropped themes.
+6. Saves the new pulse back into Mem0 so next week's run can use it.
+7. Prints a clean Markdown report to the console.
+
+The agent decides the order of these steps on its own using tool calling — we don't hard-code
+the sequence. That's the "autonomous" part.
+
+Architecture
+                   +----------------------+
+    CLI ---------->| Agent loop (LLM)     |
+                   +----------+-----------+
+                              |
+                    tool calls (the LLM decides)
+                              |
+         +----------+----+-----+-------------+-------------+
+         v          v          v             v             v
+    fetch_    recall_    analyze_     save_      render_
+    reviews   past_      themes       pulse      report
+    (scrape)  pulse      (LLM call)   (Mem0 add) (markdown)
+              (Mem0
+               search)
+
+Five tools, one loop, one memory store. Nothing else.
+
+Tools the agent will have
+Tool               What it does                              Backed by
+fetch_reviews(limit) Scrapes the latest N Groww reviews from  requests
+                     Apple App Store RSS
+recall_past_pulse()  Returns what we remember about prior    Mem0 .search()
+                     weeks for Groww
+analyze_themes(reviews) Asks the LLM to extract 3 themes +  OpenAI / Anthropic
+                       quotes + actions from raw review text
+save_pulse(week, themes, actions) Persists this week's pulse Mem0 .add()
+render_report(week, themes, actions, history) Prints the     plain Python
+                    markdown pulse to console
+
+What you'll learn
+● Agent loop from scratch in plain Python — no LangChain, no framework. Just LLM +
+  tools + a while loop.
+● Tool calling in anger — multiple tools, the model picking which to call, results fed back in.
+● Mem0's three core methods: add, search, get_all. What gets stored, how retrieval works,
+  why it isn't just a database.
+● Live web scraping — the App Store iTunes RSS feed, one requests.get away.
+● Prompt engineering for theme extraction — getting structured JSON back from an LLM
+  reliably.
+● The contrast moment — running the agent twice and watching memory change its behavior.
+
+Sample output (what your CLI will print at the end of class)
+Grow — Weekly Review Pulse (Week 2026-W20)
+
+Themes this week:
+ 1. App performance & crashes during market hours
+    "The app freezes exactly when the market opens, very frustrating."
+    -> Action: stabilize peak-time infra; add crash telemetry.
+ 2. Support response delays (NEW this week)
+    "Support takes days to reply and doesn't solve the issue."
+    -> Action: in-app SLA visibility; ticket status tracking.
+ 3. UX gaps for power users
+    "Good for beginners but lacks detailed analysis tools."
+    -> Action: advanced portfolio analytics.
+
+Memory says:
+ - "App performance & crashes" persists from 2026-W19 [persisting]
+ - "Support response delays" is new this week [new]
+ - "Login/OTP issues" from 2026-W19 did not surface [faded]
+
+The middle "Memory says" block is only possible because of Mem0. That's the takeaway.
