@@ -396,7 +396,7 @@ if (!isDev) {
     ? join(__dirname, "..", "..", "frontend", "dist")
     : join(__dirname, "..", "frontend", "dist");
   app.use(express.static(frontendDist));
-  app.get("*", (_req, res) => {
+  app.use((_req, res) => {
     res.sendFile(join(frontendDist, "index.html"));
   });
 }
