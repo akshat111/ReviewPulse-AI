@@ -391,7 +391,10 @@ This is a test notification triggered from the ${appParam.toUpperCase()} Pulse S
 
 // In production, serve frontend static files
 if (!isDev) {
-  const frontendDist = join(__dirname, "..", "frontend", "dist");
+  const isRunningFromDist = __dirname.replace(/\\/g, "/").includes("/dist/");
+  const frontendDist = isRunningFromDist
+    ? join(__dirname, "..", "..", "frontend", "dist")
+    : join(__dirname, "..", "frontend", "dist");
   app.use(express.static(frontendDist));
   app.get("/*", (_req, res) => {
     res.sendFile(join(frontendDist, "index.html"));

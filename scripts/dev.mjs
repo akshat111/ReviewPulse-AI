@@ -5,7 +5,7 @@ import { dirname, join } from "path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 
-const server = spawn("npm", ["run", "server"], {
+const server = spawn("npm", ["run", "server:dev"], {
   cwd: root,
   stdio: ["ignore", "pipe", "pipe"],
   shell: true,

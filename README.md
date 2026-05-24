@@ -169,12 +169,19 @@ npm run clean
 ```
 
 ### Production Deploy
-Build the client and start the server:
+Build the backend and frontend client, then start the server:
 ```bash
-npm run build:frontend
+# Complete build (compiles TS backend to dist/ and builds frontend client)
+npm run build:all
+
+# Start production server
 NODE_ENV=production npm run server
 ```
-Server runs on port **3000** serving the compiled static frontend.
+
+For cloud hosting (e.g. Render, Railway):
+* **Build Command**: `npm install && npm --prefix frontend install && npm run build:all`
+* **Start Command**: `npm run server`
+* **Environment Variable**: `NODE_ENV=production`
 
 ---
 
