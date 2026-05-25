@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { sendReport } from "../agent/tools/send-report.js";
 import { AgentSession } from "../agent/session.js";
+import gplay from "google-play-scraper";
 
 config();
 
@@ -21,7 +22,7 @@ app.use(express.json());
 
 // API Route: Run agent for a week
 app.post("/api/run", async (req, res) => {
-  const { week: rawWeek, limit = 50, app: appParam = "groww" } = req.body;
+  const { week: rawWeek, limit = 50, app: appParam = "groww", appleId, googleId } = req.body;
   if (!rawWeek) {
     return res.status(400).json({ error: "Missing week parameter" });
   }
@@ -29,7 +30,7 @@ app.post("/api/run", async (req, res) => {
   if (isDev) console.error(`[server] Running agent for ${rawWeek} (limit=${limit}, app=${appParam})`);
 
   try {
-    const result = await runAgent(rawWeek, { limit, app: appParam, verbose: false });
+    const result = await runAgent(rawWeek, { limit, app: appParam, appleId, googleId, verbose: false });
     res.json(result);
   } catch (err) {
     console.error("[server] Agent error:", err);
@@ -42,6 +43,8 @@ app.get("/api/run-stream", async (req, res) => {
   const week = req.query.week as string;
   const limit = parseInt(req.query.limit as string || "50", 10);
   const appParam = (req.query.app as string) || "groww";
+  const appleId = req.query.appleId as string;
+  const googleId = req.query.googleId as string;
 
   if (!week) {
     res.status(400).json({ error: "Missing week parameter" });
@@ -66,6 +69,8 @@ app.get("/api/run-stream", async (req, res) => {
     const result = await runAgent(week, {
       limit,
       app: appParam,
+      appleId,
+      googleId,
       verbose: false,
       onProgress: (event) => {
         sendEvent(event);
@@ -87,6 +92,72 @@ app.get("/api/run-stream", async (req, res) => {
     });
   } finally {
     res.end();
+  }
+});
+
+// API Route: Search for an application by name in Play Store and App Store
+app.get("/api/search", async (req, res) => {
+  const query = req.query.q as string;
+  if (!query) {
+    res.status(400).json({ error: "Missing search query parameter 'q'" });
+    return;
+  }
+
+  try {
+    const iTunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&country=in&entity=software&limit=5`;
+    const response = await fetch(iTunesUrl);
+    if (!response.ok) {
+      throw new Error(`iTunes search returned status ${response.status}`);
+    }
+    const data: any = await response.json();
+    
+    const results = [];
+    const gp = gplay as any;
+
+    for (const item of data.results || []) {
+      const appleId = String(item.trackId);
+      const googleId = item.bundleId;
+      const name = item.trackCensoredName;
+      const icon = item.artworkUrl60 || item.artworkUrl100 || "";
+      const developer = item.artistName;
+
+      // Check if it exists on Google Play with a timeout fallback
+      let isOnGooglePlay = false;
+      let playIcon = icon;
+
+      const checkPlayStore = async () => {
+        try {
+          const playDetails = await gp.app({ appId: googleId });
+          return playDetails;
+        } catch {
+          return null;
+        }
+      };
+
+      const playDetails = await Promise.race([
+        checkPlayStore(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500))
+      ]);
+
+      if (playDetails) {
+        isOnGooglePlay = true;
+        if (playDetails.icon) playIcon = playDetails.icon;
+      }
+
+      results.push({
+        name,
+        appleId,
+        googleId,
+        icon: playIcon || icon,
+        developer,
+        isOnGooglePlay
+      });
+    }
+
+    res.json(results);
+  } catch (err) {
+    console.error("[server] Search error:", err);
+    res.status(500).json({ error: (err as Error).message });
   }
 });
 

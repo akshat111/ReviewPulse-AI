@@ -15,7 +15,14 @@ export class ToolRegistry {
 
   constructor(mem0Client: import("../memory.js").Mem0Client, llmClient: import("../llm.js").LLMClient) {
     this.schemaList = schemas();
-    this.register("fetch_reviews", (args, session) => fetchReviews(args as { platform: string; limit: number }, session));
+    this.register("fetch_reviews", (args, session) => {
+      const fullArgs = {
+        ...args,
+        appleId: (args as any).appleId || session.appleId,
+        googleId: (args as any).googleId || session.googleId,
+      };
+      return fetchReviews(fullArgs as { platform: string; limit: number; appleId?: string; googleId?: string }, session);
+    });
     this.register("recall_past_pulse", (args, session) => recallPastPulse(args as { query?: string }, session, mem0Client));
     this.register("analyze_sentiment", (args, session) => analyzeSentiment(args, session));
     this.register("analyze_themes", (_args, session) => analyzeThemes(session, llmClient));

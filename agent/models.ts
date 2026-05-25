@@ -61,6 +61,8 @@ export interface AgentOptions {
   limit: number;
   verbose: boolean;
   app?: string;
+  appleId?: string;
+  googleId?: string;
   onProgress?: (event: AgentProgressEvent) => void;
 }
 

@@ -28,7 +28,7 @@ interface AppleReview {
 }
 
 export async function fetchReviews(
-  args: { platform: string; limit: number; app?: string },
+  args: { platform: string; limit: number; app?: string; appleId?: string; googleId?: string },
   session?: AgentSession
 ): Promise<string> {
   const platform = args.platform || "apple";
@@ -36,7 +36,19 @@ export async function fetchReviews(
 
   const rawApp = args.app || session?.app || "groww";
   const normalizedApp = rawApp.toLowerCase().replace(/[^a-z]/g, "");
-  const config = APP_CONFIGS[normalizedApp] || APP_CONFIGS.groww;
+
+  const appleId = args.appleId || session?.appleId;
+  const googleId = args.googleId || session?.googleId;
+
+  let config: { appleUrl: string; googleId: string };
+  if (appleId && googleId) {
+    config = {
+      appleUrl: `https://apps.apple.com/in/app/id${appleId}?see-all=reviews`,
+      googleId: googleId,
+    };
+  } else {
+    config = APP_CONFIGS[normalizedApp] || APP_CONFIGS.groww;
+  }
 
   if (platform === "apple") {
     for (let attempt = 0; attempt < 2; attempt++) {

@@ -13,6 +13,8 @@ export async function runAgent(week: string, options: AgentOptions): Promise<{ m
   const app = options.app || "groww";
   const session = new AgentSession(week);
   session.app = app;
+  session.appleId = options.appleId;
+  session.googleId = options.googleId;
   const llm = new LLMClient();
   const mem0 = new Mem0Client(app);
   const registry = new ToolRegistry(mem0, llm);

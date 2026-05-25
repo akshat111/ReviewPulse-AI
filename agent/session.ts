@@ -3,6 +3,8 @@ import type { Review, Theme, MemoryHit, SentimentData } from "./models.js";
 export class AgentSession {
   week: string;
   app = "groww";
+  appleId?: string;
+  googleId?: string;
   appleReviews: Review[] | null = null;
   googleReviews: Review[] | null = null;
   recalledMemories: MemoryHit[] | null = null;

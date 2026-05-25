@@ -54,6 +54,15 @@ interface ProgressStep {
   details?: string;
 }
 
+interface SearchResult {
+  name: string;
+  appleId: string;
+  googleId: string;
+  icon: string;
+  developer: string;
+  isOnGooglePlay: boolean;
+}
+
 const INITIAL_STEPS: ProgressStep[] = [
   { id: "init", label: "Agent Session Setup", status: "pending" },
   { id: "fetch_reviews", label: "Fetching App Store & Play Store Reviews", status: "pending" },
@@ -72,6 +81,17 @@ export default function App() {
   const [result, setResult] = useState<RunResult | null>(null);
   const [error, setError] = useState("");
   const [app, setApp] = useState("groww");
+
+  // Dynamic search variables
+  const [customAppName, setCustomAppName] = useState("");
+  const [appleId, setAppleId] = useState("");
+  const [googleId, setGoogleId] = useState("");
+  
+  // Search query states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
 
   // Feature 2: Trends State
   const [activeTab, setActiveTab] = useState<"analysis" | "trends">("analysis");
@@ -214,6 +234,24 @@ export default function App() {
     }
   }
 
+  async function handleSearch(e: FormEvent) {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    setSearchLoading(true);
+    setSearchResults([]);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(data);
+      }
+    } catch (err) {
+      console.error("Search failed:", err);
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
   async function handleRun(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -221,7 +259,13 @@ export default function App() {
     setResult(null);
     setProgress(INITIAL_STEPS.map((s) => ({ ...s, status: "pending", details: undefined })));
 
-    const eventSource = new EventSource(`/api/run-stream?week=${encodeURIComponent(week)}&limit=${limit}&app=${encodeURIComponent(app)}`);
+    let runUrl = `/api/run-stream?week=${encodeURIComponent(week)}&limit=${limit}&app=${encodeURIComponent(app)}`;
+    const isPreset = ["groww", "zerodha", "angelone"].includes(app);
+    if (!isPreset && appleId && googleId) {
+      runUrl += `&appleId=${encodeURIComponent(appleId)}&googleId=${encodeURIComponent(googleId)}`;
+    }
+
+    const eventSource = new EventSource(runUrl);
 
     eventSource.onmessage = (event) => {
       try {
@@ -280,7 +324,9 @@ export default function App() {
   }
 
   // Dynamic branding configurations based on the selected application
-  const appBranding = {
+  const isPreset = ["groww", "zerodha", "angelone"].includes(app);
+
+  const appBranding = isPreset ? {
     groww: {
       title: "Groww Pulse",
       gradient: "from-emerald-400 via-teal-400 to-cyan-400",
@@ -311,15 +357,15 @@ export default function App() {
       ringGlow: "focus:ring-blue-500/20",
       focusBorder: "focus:border-blue-500"
     }
-  }[app as "groww" | "zerodha" | "angelone"] || {
-    title: "ReviewPulse-AI",
-    gradient: "from-emerald-400 to-cyan-400",
-    accent: "text-emerald-400",
-    glowBg: "bg-emerald-500/10",
-    borderGlow: "border-emerald-500/20",
-    btnGrad: "from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400",
-    ringGlow: "focus:ring-emerald-500/20",
-    focusBorder: "focus:border-emerald-500"
+  }[app as "groww" | "zerodha" | "angelone"] : {
+    title: customAppName || "Custom App Pulse",
+    gradient: "from-indigo-400 via-purple-400 to-pink-400",
+    accent: "text-indigo-400",
+    glowBg: "bg-indigo-500/10",
+    borderGlow: "border-indigo-500/20",
+    btnGrad: "from-indigo-600 to-purple-500 hover:from-indigo-500 hover:to-purple-400",
+    ringGlow: "focus:ring-indigo-500/20",
+    focusBorder: "focus:border-indigo-500"
   };
 
   return (
@@ -343,21 +389,37 @@ export default function App() {
                   <h1 className={`text-2xl font-black bg-gradient-to-r ${appBranding.gradient} bg-clip-text text-transparent font-display tracking-tight`}>
                     {appBranding.title}
                   </h1>
-                  <select
-                    value={app}
-                    onChange={(e) => {
-                      const nextApp = e.target.value;
-                      setApp(nextApp);
-                      if (activeTab === "trends") {
-                        fetchTrends(nextApp);
-                      }
-                    }}
-                    className="bg-[#0e1626]/80 border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer hover:bg-[#152037] transition shadow-inner no-print"
-                  >
-                    <option value="groww">Groww</option>
-                    <option value="zerodha">Zerodha</option>
-                    <option value="angelone">Angel One</option>
-                  </select>
+                  <div className="flex gap-2 items-center">
+                    <select
+                      value={isPreset ? app : "custom"}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val !== "custom") {
+                          setApp(val);
+                          setCustomAppName("");
+                          setAppleId("");
+                          setGoogleId("");
+                          if (activeTab === "trends") {
+                            fetchTrends(val);
+                          }
+                        } else {
+                          setShowSearchModal(true);
+                        }
+                      }}
+                      className="bg-[#0e1626]/80 border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer hover:bg-[#152037] transition shadow-inner no-print"
+                    >
+                      <option value="groww">Groww</option>
+                      <option value="zerodha">Zerodha</option>
+                      <option value="angelone">Angel One</option>
+                      {!isPreset && <option value="custom">{customAppName || "Custom App"}</option>}
+                    </select>
+                    <button
+                      onClick={() => setShowSearchModal(true)}
+                      className="bg-[#0f172a]/60 border border-white/10 hover:border-emerald-500/30 text-slate-300 hover:text-emerald-400 px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      🔍 Search App
+                    </button>
+                  </div>
                 </div>
                 <p className="text-slate-400 mt-0.5 text-xs font-medium">Autonomous agentic intelligence for user reviews</p>
               </div>
@@ -1350,10 +1412,113 @@ export default function App() {
         )}
       </main>
 
+      {/* Dynamic Search Modal Overlay */}
+      {showSearchModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md transition-all duration-300">
+          <div className="glass-panel w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl animate-fade-in-up border border-white/10">
+            <div className="bg-[#0b101c]/90 border-b border-white/5 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-sm uppercase tracking-widest font-black text-slate-200">🔍 Search Application Database</h3>
+              <button 
+                onClick={() => {
+                  setShowSearchModal(false);
+                  setSearchQuery("");
+                  setSearchResults([]);
+                }}
+                className="text-slate-400 hover:text-white transition cursor-pointer text-sm"
+              >
+                ✕ Close
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <form onSubmit={handleSearch} className="flex gap-3">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Enter application name (e.g., Paytm, WhatsApp, PhonePe)..."
+                  className="bg-[#0b101c]/80 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500 w-full shadow-inner font-medium"
+                />
+                <button
+                  type="submit"
+                  disabled={searchLoading}
+                  className="bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-black px-6 py-3 rounded-xl text-xs uppercase tracking-wider transition shadow cursor-pointer flex items-center gap-1.5"
+                >
+                  {searchLoading ? "Searching..." : "Search"}
+                </button>
+              </form>
+
+              {/* Search Results list */}
+              <div className="max-h-[300px] overflow-y-auto divide-y divide-white/5 scrollbar-custom bg-[#090e18]/10 rounded-xl border border-white/5">
+                {searchLoading ? (
+                  <div className="p-12 text-center text-xs text-slate-400 flex flex-col items-center gap-3">
+                    <svg className="w-5 h-5 animate-spin text-emerald-500" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Scraping App Store & Play Store matches...
+                  </div>
+                ) : searchResults.length > 0 ? (
+                  searchResults.map((item, idx) => (
+                    <div key={idx} className="p-4 hover:bg-white/[0.015] flex items-center justify-between gap-4 transition duration-200">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img src={item.icon} alt={item.name} className="w-10 h-10 rounded-xl border border-white/10 shadow bg-slate-950" />
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-extrabold text-slate-100 truncate font-display">{item.name}</h4>
+                          <p className="text-[10px] text-slate-500 truncate font-medium">by {item.developer}</p>
+                          <div className="flex gap-2 mt-1 flex-wrap">
+                            <span className="text-[8px] font-mono bg-slate-900 border border-white/5 rounded px-1.5 py-0.5 text-slate-400">
+                              App Store ID: {item.appleId}
+                            </span>
+                            <span className="text-[8px] font-mono bg-slate-900 border border-white/5 rounded px-1.5 py-0.5 text-slate-400">
+                              Play Store ID: {item.googleId}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={() => {
+                          const normalized = item.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+                          setApp(normalized);
+                          setCustomAppName(item.name);
+                          setAppleId(item.appleId);
+                          setGoogleId(item.googleId);
+                          setShowSearchModal(false);
+                          setSearchQuery("");
+                          setSearchResults([]);
+                          
+                          // If trends tab is active, trigger trend load for new custom app
+                          if (activeTab === "trends") {
+                            fetchTrends(normalized);
+                          }
+                        }}
+                        disabled={!item.isOnGooglePlay}
+                        className={`font-black px-4 py-2 rounded-xl text-[10px] uppercase tracking-wider transition shadow cursor-pointer ${
+                          item.isOnGooglePlay 
+                            ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                            : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
+                        }`}
+                      >
+                        {item.isOnGooglePlay ? "Select" : "No Android App"}
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-12 text-center text-xs text-slate-500">
+                    No results to display. Type an app name above to search.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Styled Footer */}
       <footer className="border-t border-white/5 bg-[#0b101c]/10 mt-20 py-8 no-print">
         <div className="max-w-6xl mx-auto px-6 text-center text-slate-500 text-[10px] uppercase tracking-widest font-bold">
-          <p>{app === "groww" ? "Groww" : app === "zerodha" ? "Zerodha" : "Angel One"} Weekly Pulse • AI Review Intelligence engine • Mem0 Core Memory</p>
+          <p>{app === "groww" ? "Groww" : app === "zerodha" ? "Zerodha" : app === "angelone" ? "Angel One" : customAppName || "Custom App"} Weekly Pulse • AI Review Intelligence engine • Mem0 Core Memory</p>
         </div>
       </footer>
     </div>
