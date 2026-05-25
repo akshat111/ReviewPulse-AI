@@ -1493,14 +1493,9 @@ export default function App() {
                             fetchTrends(normalized);
                           }
                         }}
-                        disabled={!item.isOnGooglePlay}
-                        className={`font-black px-4 py-2 rounded-xl text-[10px] uppercase tracking-wider transition shadow cursor-pointer ${
-                          item.isOnGooglePlay 
-                            ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-                            : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
-                        }`}
+                        className="font-black px-4 py-2 rounded-xl text-[10px] uppercase tracking-wider transition shadow cursor-pointer bg-emerald-500 hover:bg-emerald-400 text-slate-950"
                       >
-                        {item.isOnGooglePlay ? "Select" : "No Android App"}
+                        Select
                       </button>
                     </div>
                   ))
