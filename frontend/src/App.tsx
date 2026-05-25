@@ -133,6 +133,26 @@ export default function App() {
   const [showSlackConfig, setShowSlackConfig] = useState(false);
   const [showEmailConfig, setShowEmailConfig] = useState(false);
 
+  // Schedules states
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [showSchedulesConfig, setShowSchedulesConfig] = useState(false);
+  const [schedInterval, setSchedInterval] = useState<"daily" | "weekly">("weekly");
+  const [schedWeekOffset, setSchedWeekOffset] = useState<"current" | "previous">("previous");
+  const [schedLimit, setSchedLimit] = useState(50);
+  const [schedSaving, setSchedSaving] = useState(false);
+
+  async function fetchSchedules() {
+    try {
+      const res = await fetch("/api/schedules");
+      if (res.ok) {
+        const data = await res.json();
+        setSchedules(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch schedules:", err);
+    }
+  }
+
   useEffect(() => {
     async function fetchDeliveryStatus() {
       try {
@@ -155,7 +175,60 @@ export default function App() {
       }
     }
     fetchDeliveryStatus();
+    fetchSchedules();
   }, []);
+
+  async function handleSaveSchedule(e: FormEvent) {
+    e.preventDefault();
+    setSchedSaving(true);
+    try {
+      const res = await fetch("/api/schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          app,
+          appName: isPreset ? appBranding.title : (customAppName || "Custom App"),
+          appleId: isPreset ? undefined : appleId,
+          googleId: isPreset ? undefined : googleId,
+          interval: schedInterval,
+          weekOffset: schedWeekOffset,
+          limit: schedLimit,
+          enabled: true
+        })
+      });
+      if (res.ok) {
+        fetchSchedules();
+        setSchedSaving(false);
+        setSchedLimit(50);
+        setShowSchedulesConfig(false);
+      }
+    } catch (err) {
+      console.error("Save schedule failed:", err);
+      setSchedSaving(false);
+    }
+  }
+
+  async function handleDeleteSchedule(id: string) {
+    try {
+      const res = await fetch(`/api/schedules/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        fetchSchedules();
+      }
+    } catch (err) {
+      console.error("Delete schedule failed:", err);
+    }
+  }
+
+  async function handleToggleSchedule(id: string) {
+    try {
+      const res = await fetch(`/api/schedules/${id}/toggle`, { method: "POST" });
+      if (res.ok) {
+        fetchSchedules();
+      }
+    } catch (err) {
+      console.error("Toggle schedule failed:", err);
+    }
+  }
 
   async function handleSaveConfig(e: FormEvent) {
     e.preventDefault();
@@ -715,6 +788,142 @@ export default function App() {
                     </button>
                   </div>
                 </form>
+              )}
+            </div>
+
+            {/* Automated Cron Scheduler Settings Panel */}
+            <div className="glass-panel rounded-2xl p-6 shadow-2xl relative no-print">
+              <div className="flex items-center justify-between flex-wrap gap-4 border-b border-white/5 pb-4 mb-5">
+                <div>
+                  <h3 className="text-sm uppercase tracking-widest font-extrabold text-white flex items-center gap-2">
+                    📅 Background Cron Automations
+                  </h3>
+                  <p className="text-slate-400 text-[10px] mt-1 font-medium">Configure periodic background review scraping & Slack/Email dispatches</p>
+                </div>
+                
+                <button
+                  onClick={() => setShowSchedulesConfig(!showSchedulesConfig)}
+                  className="bg-[#0f172a]/60 border border-white/10 hover:border-emerald-500/30 text-slate-300 hover:text-emerald-400 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition duration-200 shadow cursor-pointer"
+                >
+                  {showSchedulesConfig ? "Hide Scheduler Options" : `Manage Automations (${schedules.length})`}
+                </button>
+              </div>
+
+              {/* Schedules Configuration Form and Jobs List */}
+              {showSchedulesConfig && (
+                <div className="space-y-6">
+                  {/* Active Schedules List */}
+                  <div className="bg-[#0e1626]/20 border border-white/5 rounded-xl p-5">
+                    <h4 className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-4 flex items-center gap-2">
+                      Active Cron Jobs
+                    </h4>
+                    
+                    {schedules.length === 0 ? (
+                      <p className="text-slate-500 text-xs text-center py-4 font-medium">No background schedules active. Register a new task below.</p>
+                    ) : (
+                      <div className="divide-y divide-white/5">
+                        {schedules.map((sched) => (
+                          <div key={sched.id} className="py-3 flex items-center justify-between gap-4 text-xs">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${
+                                  sched.app === "groww"
+                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                    : sched.app === "zerodha"
+                                      ? "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                                      : sched.app === "angelone"
+                                        ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                                        : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+                                }`}>
+                                  {sched.appName}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-bold uppercase font-mono">
+                                  {sched.interval === "weekly" ? "Weekly (Mondays @ 9:00 AM IST)" : "Daily (@ 9:00 AM IST)"}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 mt-1 font-mono">
+                                Limit: {sched.limit} reviews | Offset: {sched.weekOffset === "previous" ? "Previous Week (Recommended)" : "Current Week"}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              {/* Enable/Disable Toggle */}
+                              <button
+                                onClick={() => handleToggleSchedule(sched.id)}
+                                className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded border transition cursor-pointer ${
+                                  sched.enabled
+                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 glow-text-emerald"
+                                    : "bg-slate-900 text-slate-500 border-white/5"
+                                }`}
+                              >
+                                {sched.enabled ? "Active" : "Paused"}
+                              </button>
+
+                              {/* Delete Schedule Button */}
+                              <button
+                                onClick={() => handleDeleteSchedule(sched.id)}
+                                className="bg-[#0f172a]/60 hover:bg-red-500/10 border border-white/10 hover:border-red-500/20 text-slate-400 hover:text-red-400 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition cursor-pointer"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Register New Job Form */}
+                  <form onSubmit={handleSaveSchedule} className="border-t border-white/5 pt-5 space-y-4">
+                    <h4 className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-2">Register Automated Schedule for: <span className="text-emerald-400">{isPreset ? appBranding.title : (customAppName || "Custom Selected App")}</span></h4>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-slate-400 text-xs font-medium mb-1.5">Recurrence Interval</label>
+                        <select
+                          value={schedInterval}
+                          onChange={(e) => setSchedInterval(e.target.value as "daily" | "weekly")}
+                          className="bg-[#0b101c]/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 w-full font-bold cursor-pointer"
+                        >
+                          <option value="weekly">Weekly (Every Monday at 9:00 AM IST)</option>
+                          <option value="daily">Daily (Every day at 9:00 AM IST)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 text-xs font-medium mb-1.5">Target Week Offset</label>
+                        <select
+                          value={schedWeekOffset}
+                          onChange={(e) => setSchedWeekOffset(e.target.value as "current" | "previous")}
+                          className="bg-[#0b101c]/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 w-full font-bold cursor-pointer"
+                        >
+                          <option value="previous">Previous Week (Recommended for Mondays)</option>
+                          <option value="current">Current ISO Week</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 text-xs font-medium mb-1.5">Review Scrape Limit</label>
+                        <input
+                          type="number"
+                          value={schedLimit}
+                          onChange={(e) => setSchedLimit(Math.max(1, Math.min(500, Number(e.target.value))))}
+                          className="bg-[#0b101c]/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 w-full font-mono shadow-inner"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="submit"
+                        disabled={schedSaving}
+                        className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider transition disabled:bg-slate-800 disabled:text-slate-500 shadow-md cursor-pointer"
+                      >
+                        {schedSaving ? "Registering Job..." : "Schedule Automation"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               )}
             </div>
 

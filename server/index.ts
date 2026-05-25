@@ -9,6 +9,7 @@ import { dirname, join } from "path";
 import { sendReport } from "../agent/tools/send-report.js";
 import { AgentSession } from "../agent/session.js";
 import gplay from "google-play-scraper";
+import cron from "node-cron";
 
 config();
 
@@ -460,6 +461,182 @@ This is a test notification triggered from the ${appParam.toUpperCase()} Pulse S
   }
 });
 
+// --- Cron Scheduler Engine & Endpoints ---
+
+interface ScheduleConfig {
+  id: string;
+  app: string;
+  appName: string;
+  appleId?: string;
+  googleId?: string;
+  interval: "daily" | "weekly";
+  weekOffset: "current" | "previous";
+  limit: number;
+  enabled: boolean;
+}
+
+const scheduledJobs = new Map<string, cron.ScheduledTask>();
+
+function getISOWeekString(date: Date = new Date(), offsetWeeks = 0): string {
+  const target = new Date(date.valueOf());
+  if (offsetWeeks !== 0) {
+    target.setDate(target.getDate() - (offsetWeeks * 7));
+  }
+  const dayNr = (target.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+  }
+  const weekNum = 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
+  const year = new Date(firstThursday).getFullYear();
+  return `${year}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+function loadSchedules() {
+  for (const job of scheduledJobs.values()) {
+    job.stop();
+  }
+  scheduledJobs.clear();
+
+  const configData = readConfig();
+  const schedules: ScheduleConfig[] = configData.schedules || [];
+
+  for (const sched of schedules) {
+    if (!sched.enabled) continue;
+
+    // Daily: 9:00 AM IST -> "0 9 * * *"
+    // Weekly: Monday 9:00 AM IST -> "0 9 * * 1"
+    const cronExpr = sched.interval === "weekly" ? "0 9 * * 1" : "0 9 * * *";
+
+    try {
+      const job = cron.schedule(cronExpr, async () => {
+        console.log(`[cron] Triggered schedule job '${sched.id}' for app '${sched.app}'`);
+        try {
+          const offsetWeeks = sched.weekOffset === "previous" ? 1 : 0;
+          const targetWeek = getISOWeekString(new Date(), offsetWeeks);
+          
+          console.log(`[cron] Executing agent loop for week '${targetWeek}'...`);
+          await runAgent(targetWeek, {
+            limit: sched.limit || 50,
+            app: sched.app,
+            appleId: sched.appleId,
+            googleId: sched.googleId,
+            verbose: true
+          });
+          console.log(`[cron] Completed schedule job '${sched.id}'`);
+        } catch (err) {
+          console.error(`[cron] Job '${sched.id}' failed:`, err);
+        }
+      }, {
+        timezone: "Asia/Kolkata"
+      });
+
+      scheduledJobs.set(sched.id, job);
+      console.log(`[cron] Registered job '${sched.id}' for app '${sched.app}' (interval: ${sched.interval}, cron: ${cronExpr})`);
+    } catch (err) {
+      console.error(`[cron] Failed to register job '${sched.id}':`, err);
+    }
+  }
+}
+
+// GET configured cron schedules
+app.get("/api/schedules", (req, res) => {
+  const configData = readConfig();
+  res.json(configData.schedules || []);
+});
+
+// POST create or update a schedule
+app.post("/api/schedules", (req, res) => {
+  try {
+    const { id, app: schedApp, appName, appleId, googleId, interval, weekOffset, limit, enabled } = req.body;
+    
+    if (!schedApp || !appName || !interval || !weekOffset) {
+      res.status(400).json({ error: "Missing required schedule parameters" });
+      return;
+    }
+
+    const configData = readConfig();
+    const schedules: ScheduleConfig[] = configData.schedules || [];
+
+    const newSchedule: ScheduleConfig = {
+      id: id || `sched_${Date.now()}`,
+      app: schedApp,
+      appName,
+      appleId,
+      googleId,
+      interval,
+      weekOffset,
+      limit: limit || 50,
+      enabled: enabled ?? true
+    };
+
+    const existingIdx = schedules.findIndex(s => s.id === newSchedule.id);
+    if (existingIdx !== -1) {
+      schedules[existingIdx] = newSchedule;
+    } else {
+      schedules.push(newSchedule);
+    }
+
+    configData.schedules = schedules;
+    writeConfig(configData);
+    
+    loadSchedules();
+
+    res.json({ success: true, schedule: newSchedule });
+  } catch (err) {
+    console.error("[server] Save schedule error:", err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// DELETE a schedule
+app.delete("/api/schedules/:id", (req, res) => {
+  try {
+    const id = req.params.id;
+    const configData = readConfig();
+    const schedules: ScheduleConfig[] = configData.schedules || [];
+
+    const filtered = schedules.filter(s => s.id !== id);
+    configData.schedules = filtered;
+    writeConfig(configData);
+
+    loadSchedules();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[server] Delete schedule error:", err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// POST toggle schedule active state
+app.post("/api/schedules/:id/toggle", (req, res) => {
+  try {
+    const id = req.params.id;
+    const configData = readConfig();
+    const schedules: ScheduleConfig[] = configData.schedules || [];
+
+    const sched = schedules.find(s => s.id === id);
+    if (!sched) {
+      res.status(404).json({ error: "Schedule not found" });
+      return;
+    }
+
+    sched.enabled = !sched.enabled;
+    configData.schedules = schedules;
+    writeConfig(configData);
+
+    loadSchedules();
+
+    res.json({ success: true, enabled: sched.enabled });
+  } catch (err) {
+    console.error("[server] Toggle schedule error:", err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // In production, serve frontend static files
 if (!isDev) {
   const isRunningFromDist = __dirname.replace(/\\/g, "/").includes("/dist/");
@@ -485,4 +662,10 @@ ${isDev ? `📱 Frontend:     http://localhost:5173 (run "npm run frontend:dev")
 🔧 Mode:         ${isDev ? "DEVELOPMENT" : "PRODUCTION"}
 
   `);
+
+  try {
+    loadSchedules();
+  } catch (err) {
+    console.error("[server] Failed to initialize cron schedules:", err);
+  }
 });
