@@ -5,6 +5,7 @@ export interface Review {
   rating: number;
   updated: string;
   source?: "apple" | "google";
+  category?: "Bug Report" | "Feature Request" | "Praise" | "UI/UX" | "Payments" | "Other";
 }
 
 export interface SentimentData {

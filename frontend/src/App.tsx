@@ -14,6 +14,7 @@ interface Review {
   rating: number;
   updated: string;
   source?: string;
+  category?: "Bug Report" | "Feature Request" | "Praise" | "UI/UX" | "Payments" | "Other";
 }
 
 interface SentimentData {
@@ -129,9 +130,13 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [testingDelivery, setTestingDelivery] = useState(false);
-  const [deliveryTestResult, setDeliveryTestResult] = useState<string | null>(null);
   const [showSlackConfig, setShowSlackConfig] = useState(false);
   const [showEmailConfig, setShowEmailConfig] = useState(false);
+
+  // Filtering states
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [selectedRating, setSelectedRating] = useState<string>("All");
+  const [filterQuery, setFilterQuery] = useState<string>("");
 
   // Schedules states
   const [schedules, setSchedules] = useState<any[]>([]);
@@ -439,6 +444,37 @@ export default function App() {
     btnGrad: "from-indigo-600 to-purple-500 hover:from-indigo-500 hover:to-purple-400",
     ringGlow: "focus:ring-indigo-500/20",
     focusBorder: "focus:border-indigo-500"
+  };
+
+  // Helper to filter reviews
+  const filterReviewItem = (review: Review) => {
+    if (selectedCategory !== "All" && review.category !== selectedCategory) {
+      return false;
+    }
+    if (selectedRating !== "All" && String(review.rating) !== selectedRating) {
+      return false;
+    }
+    if (filterQuery.trim()) {
+      const q = filterQuery.toLowerCase();
+      const titleMatch = review.title?.toLowerCase().includes(q) || false;
+      const contentMatch = review.content?.toLowerCase().includes(q) || false;
+      if (!titleMatch && !contentMatch) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const filteredAppleReviews = result?.appleReviews?.filter(filterReviewItem) || [];
+  const filteredGoogleReviews = result?.googleReviews?.filter(filterReviewItem) || [];
+
+  const getCategoryCount = (catName: string) => {
+    const allReviews = [
+      ...(result?.appleReviews || []),
+      ...(result?.googleReviews || []),
+    ];
+    if (catName === "All") return allReviews.length;
+    return allReviews.filter(r => r.category === catName).length;
   };
 
   return (
@@ -1247,21 +1283,139 @@ export default function App() {
                 {((result.appleReviews && result.appleReviews.length > 0) || 
                   (result.googleReviews && result.googleReviews.length > 0)) && (
                   <section>
-                    <h2 className="text-lg font-black text-white mb-5 flex items-center gap-2.5 font-display tracking-tight uppercase">
+                    <h2 className="text-lg font-black text-white mb-3 flex items-center gap-2.5 font-display tracking-tight uppercase">
                       <span className="w-1.5 h-6 bg-gradient-to-b from-indigo-400 to-indigo-650 rounded-full" />
                       Analyzed Reviews ({(result.appleReviews?.length || 0) + (result.googleReviews?.length || 0)})
                     </h2>
+
+                    {(selectedCategory !== "All" || selectedRating !== "All" || filterQuery.trim()) && (
+                      <div className="text-[10px] text-slate-400 font-bold mb-4 no-print bg-[#0e1626]/40 border border-white/5 px-4 py-2 rounded-xl inline-block">
+                        🔍 Filters active. Showing <span className="text-emerald-400">{filteredAppleReviews.length + filteredGoogleReviews.length}</span> matching reviews out of <span className="text-slate-300">{(result.appleReviews?.length || 0) + (result.googleReviews?.length || 0)}</span> total.
+                      </div>
+                    )}
+
+                    {/* Filter controls */}
+                    <div className="glass-panel rounded-2xl p-5 mb-5 flex flex-wrap gap-4 items-center justify-between no-print border border-white/5">
+                      <div className="flex-1 min-w-[200px]">
+                        <label className="block text-[10px] uppercase tracking-widest font-extrabold text-slate-400 mb-2">Search Reviews</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={filterQuery}
+                            onChange={(e) => setFilterQuery(e.target.value)}
+                            placeholder="Filter by keyword..."
+                            className="bg-[#0b101c]/60 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 w-full transition shadow-inner"
+                          />
+                          {filterQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setFilterQuery("")}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs font-bold"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="w-full sm:w-auto flex gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-widest font-extrabold text-slate-400 mb-2">Category</label>
+                          <select
+                            value={selectedCategory}
+                            onChange={(e) => setSelectedCategory(e.target.value)}
+                            className="bg-[#0b101c]/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer hover:bg-[#152037] transition shadow-inner font-display"
+                          >
+                            <option value="All">All Categories</option>
+                            <option value="Bug Report">Bug Report</option>
+                            <option value="Feature Request">Feature Request</option>
+                            <option value="Praise">Praise</option>
+                            <option value="UI/UX">UI/UX</option>
+                            <option value="Payments">Payments</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-widest font-extrabold text-slate-400 mb-2">Rating</label>
+                          <select
+                            value={selectedRating}
+                            onChange={(e) => setSelectedRating(e.target.value)}
+                            className="bg-[#0b101c]/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer hover:bg-[#152037] transition shadow-inner font-display"
+                          >
+                            <option value="All">All Stars</option>
+                            <option value="5">5 ★</option>
+                            <option value="4">4 ★</option>
+                            <option value="3">3 ★</option>
+                            <option value="2">2 ★</option>
+                            <option value="1">1 ★</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Category tabs filters */}
+                    <div className="flex flex-wrap gap-2 mb-6 no-print">
+                      {(["All", "Bug Report", "Feature Request", "Praise", "UI/UX", "Payments", "Other"] as const).map((cat) => {
+                        const count = getCategoryCount(cat);
+                        if (cat !== "All" && count === 0) return null;
+                        const isActive = selectedCategory === cat;
+                        
+                        const badgeColors = {
+                          "All": "bg-slate-800/60 text-slate-300 border-slate-700/50 hover:bg-slate-700/60",
+                          "Bug Report": "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20",
+                          "Feature Request": "bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500/20",
+                          "Praise": "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20",
+                          "UI/UX": "bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20",
+                          "Payments": "bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20",
+                          "Other": "bg-slate-600/10 text-slate-400 border-slate-600/20 hover:bg-slate-600/20",
+                        };
+
+                        const activeBadgeColors = {
+                          "All": "bg-slate-100 text-slate-950 border-slate-200 shadow",
+                          "Bug Report": "bg-red-500 text-slate-950 border-red-400 shadow shadow-red-500/20",
+                          "Feature Request": "bg-purple-500 text-slate-950 border-purple-400 shadow shadow-purple-500/20",
+                          "Praise": "bg-emerald-500 text-slate-950 border-emerald-400 shadow shadow-emerald-500/20",
+                          "UI/UX": "bg-blue-500 text-slate-950 border-blue-400 shadow shadow-blue-500/20",
+                          "Payments": "bg-amber-500 text-slate-950 border-amber-400 shadow shadow-amber-500/20",
+                          "Other": "bg-slate-400 text-slate-950 border-slate-300 shadow",
+                        };
+
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => setSelectedCategory(cat)}
+                            className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition cursor-pointer flex items-center gap-1.5 ${
+                              isActive ? activeBadgeColors[cat] : badgeColors[cat]
+                            }`}
+                          >
+                            {cat}
+                            <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-mono ${
+                              isActive ? 'bg-black/10 text-slate-950' : 'bg-white/5 text-slate-400'
+                            }`}>
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Apple Reviews */}
-                      <div className="glass-panel rounded-2xl overflow-hidden shadow-xl flex flex-col h-[450px]">
-                        <div className="bg-[#0b101c]/80 border-b border-white/5 px-5 py-4 flex items-center gap-2.5">
-                          <span className="text-slate-400 text-base">🍎</span>
-                          <h3 className="text-xs uppercase tracking-widest font-extrabold text-slate-200">Apple App Store reviews ({result.appleReviews?.length || 0})</h3>
+                      <div className="glass-panel rounded-2xl overflow-hidden shadow-xl flex flex-col h-[480px]">
+                        <div className="bg-[#0b101c]/80 border-b border-white/5 px-5 py-4 flex items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400 text-base">🍎</span>
+                            <h3 className="text-xs uppercase tracking-widest font-extrabold text-slate-200">Apple App Store reviews ({filteredAppleReviews.length})</h3>
+                          </div>
+                          {filteredAppleReviews.length !== (result.appleReviews?.length || 0) && (
+                            <span className="text-[9px] text-slate-500 font-bold uppercase">Filtered from {result.appleReviews?.length || 0}</span>
+                          )}
                         </div>
                         <div className="overflow-y-auto divide-y divide-white/5 flex-1 scrollbar-custom bg-[#090e18]/20">
-                          {result.appleReviews && result.appleReviews.length > 0 ? (
-                            result.appleReviews.map((review, i) => (
+                          {filteredAppleReviews.length > 0 ? (
+                            filteredAppleReviews.map((review, i) => (
                               <div key={review.id || i} className="p-5 hover:bg-white/[0.015] transition duration-200">
                                 <div className="flex items-center justify-between gap-3 mb-2.5">
                                   <div className="flex items-center gap-2.5">
@@ -1274,7 +1428,24 @@ export default function App() {
                                     }`}>
                                       {review.rating} ★
                                     </span>
-                                    <h4 className="text-xs font-bold text-slate-100 truncate max-w-[200px] font-display">
+                                    {review.category && (
+                                      <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${
+                                        review.category === "Bug Report"
+                                          ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                          : review.category === "Feature Request"
+                                            ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                            : review.category === "Praise"
+                                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                              : review.category === "UI/UX"
+                                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                : review.category === "Payments"
+                                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                  : 'bg-slate-600/10 text-slate-400 border-slate-600/20'
+                                      }`}>
+                                        {review.category}
+                                      </span>
+                                    )}
+                                    <h4 className="text-xs font-bold text-slate-100 truncate max-w-[150px] font-display">
                                       {review.title || "(No Title)"}
                                     </h4>
                                   </div>
@@ -1286,20 +1457,25 @@ export default function App() {
                               </div>
                             ))
                           ) : (
-                            <div className="p-8 text-center text-xs text-slate-500">No App Store reviews found.</div>
+                            <div className="p-8 text-center text-xs text-slate-500">No matching App Store reviews.</div>
                           )}
                         </div>
                       </div>
 
                       {/* Google Reviews */}
-                      <div className="glass-panel rounded-2xl overflow-hidden shadow-xl flex flex-col h-[450px]">
-                        <div className="bg-[#0b101c]/80 border-b border-white/5 px-5 py-4 flex items-center gap-2.5">
-                          <span className="text-cyan-400 text-base">🤖</span>
-                          <h3 className="text-xs uppercase tracking-widest font-extrabold text-slate-200">Google Play Store reviews ({result.googleReviews?.length || 0})</h3>
+                      <div className="glass-panel rounded-2xl overflow-hidden shadow-xl flex flex-col h-[480px]">
+                        <div className="bg-[#0b101c]/80 border-b border-white/5 px-5 py-4 flex items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-cyan-400 text-base">🤖</span>
+                            <h3 className="text-xs uppercase tracking-widest font-extrabold text-slate-200">Google Play Store reviews ({filteredGoogleReviews.length})</h3>
+                          </div>
+                          {filteredGoogleReviews.length !== (result.googleReviews?.length || 0) && (
+                            <span className="text-[9px] text-slate-500 font-bold uppercase">Filtered from {result.googleReviews?.length || 0}</span>
+                          )}
                         </div>
                         <div className="overflow-y-auto divide-y divide-white/5 flex-1 scrollbar-custom bg-[#090e18]/20">
-                          {result.googleReviews && result.googleReviews.length > 0 ? (
-                            result.googleReviews.map((review, i) => (
+                          {filteredGoogleReviews.length > 0 ? (
+                            filteredGoogleReviews.map((review, i) => (
                               <div key={review.id || i} className="p-5 hover:bg-white/[0.015] transition duration-200">
                                 <div className="flex items-center justify-between gap-3 mb-2.5">
                                   <div className="flex items-center gap-2.5">
@@ -1312,7 +1488,24 @@ export default function App() {
                                     }`}>
                                       {review.rating} ★
                                     </span>
-                                    <h4 className="text-xs font-bold text-slate-100 truncate max-w-[200px] font-display">
+                                    {review.category && (
+                                      <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${
+                                        review.category === "Bug Report"
+                                          ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                          : review.category === "Feature Request"
+                                            ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                            : review.category === "Praise"
+                                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                              : review.category === "UI/UX"
+                                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                : review.category === "Payments"
+                                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                  : 'bg-slate-600/10 text-slate-400 border-slate-600/20'
+                                      }`}>
+                                        {review.category}
+                                      </span>
+                                    )}
+                                    <h4 className="text-xs font-bold text-slate-100 truncate max-w-[150px] font-display">
                                       {review.title || "(No Title)"}
                                     </h4>
                                   </div>
@@ -1324,7 +1517,7 @@ export default function App() {
                               </div>
                             ))
                           ) : (
-                            <div className="p-8 text-center text-xs text-slate-500">No Google Play Store reviews found.</div>
+                            <div className="p-8 text-center text-xs text-slate-500">No matching Google Play Store reviews.</div>
                           )}
                         </div>
                       </div>
